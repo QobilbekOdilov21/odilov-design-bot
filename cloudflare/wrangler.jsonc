@@ -1,13 +1,14 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "odilov-studio-orders",
+  "name": "odilov-design-bot",
   "main": "src/index.js",
   "compatibility_date": "2026-10-31",
   "workers_dev": true,
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "odilov-studio-db"
+      "database_name": "odilov-studio-db",
+      "database_id": "cb6c809d-9b7e-4872-be34-9f77c1ba7a8b"
     }
   ]
 }
