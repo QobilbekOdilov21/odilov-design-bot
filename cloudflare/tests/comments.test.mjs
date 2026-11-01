@@ -137,3 +137,22 @@ test('edited channel post reattempts failed comment markup but ignores already a
   },api,x.store);
   assert.equal(edits,2);
 });
+
+
+test('channel permission diagnosis shows actual Telegram edit rights and channel identity',async()=>{
+  const x=await setup();
+  await x.send(channelPost());
+  const api=async(method,params)=>{
+    if(method==='getChat')return {id:-1001256789012,type:'channel',username:'odilovstudio'};
+    if(method==='getMe')return {id:99,username:'odilovstudiobot'};
+    if(method==='getChatMember')return {status:'administrator',can_edit_messages:false,can_post_messages:true};
+    if(method==='sendMessage') {
+      assert.equal(params.chat_id,111);
+      assert.match(params.text,/Xabarlarni tahrirlash: ❌ Berilmagan/);
+      assert.match(params.text,/Qayd etilgan postlarning kanal IDsi: ✅ Bir xil/);
+      return {message_id:5};
+    }
+    throw Error('Unexpected '+method);
+  };
+  await handleUpdate(x.env,msg(111,'/checkchannel'),api,x.store);
+});
