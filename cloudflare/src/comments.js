@@ -24,7 +24,7 @@ function postLink(post) {
 function commentsKeyboard(post, page, total, canDelete, items) {
   const kb = [[{ text:'✍️ Izoh yozish', callback_data:`c:add:${post.id}` }]];
   if (canDelete) for (const item of items)
-    kb.push([{text:`🗑 #${item.id} izohni o‘chirish`,callback_data:`c:del:${item.id}:${post.id}:${page}`}]);
+    kb.push([{text:`🗑 #${item.id} izohni o‘chirish`,callback_data:`c:del:${post.id}:${item.id}:${page}`}]);
   const pagination = [];
   if (page > 0) pagination.push({text:'⬅️ Oldingi',callback_data:`c:view:${post.id}:${page-1}`});
   if ((page + 1) * PAGE_SIZE < total && page < MAX_PAGES - 1)
