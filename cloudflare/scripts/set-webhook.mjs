@@ -26,7 +26,7 @@ try {
     if(!/^https:\/\/[\w.-]+(?:\:\d+)?\/?$/.test(url)||!/^[-_A-Za-z0-9]{20,256}$/.test(secret))throw Error('URL yoki secret noto‘g‘ri.');
     const r=await fetch(`https://api.telegram.org/bot${token}/setWebhook`,{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({url:url.replace(/\/$/,'')+'/webhook',secret_token:secret,allowed_updates:['message','callback_query'],drop_pending_updates:false})
+      body:JSON.stringify({url:url.replace(/\/$/,'')+'/webhook',secret_token:secret,allowed_updates:['message','callback_query','channel_post'],drop_pending_updates:false})
     });
     const data=await r.json();
     if(!data.ok)throw Error(data.description||'Webhook sozlanmadi');
