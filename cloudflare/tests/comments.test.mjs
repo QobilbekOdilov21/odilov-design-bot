@@ -76,3 +76,64 @@ test('channel post with existing buttons preserves them',async()=>{
   assert.equal(buttons[0][0].text,'Kanal');
   assert.equal(buttons[1][0].text,'💬 Izoh qoldirish');
 });
+
+
+test('every successive channel post gets its own comment button',async()=>{
+  const x=await setup();
+  await x.send(channelPost('odilovstudio',42));
+  await x.send(channelPost('odilovstudio',43));
+  await x.send(channelPost('odilovstudio',44));
+  const edits=x.log.filter(e=>e.method==='editMessageReplyMarkup');
+  assert.equal(edits.length,3);
+  assert.deepEqual(edits.map(e=>e.params.message_id),[42,43,44]);
+  assert.deepEqual(edits.map(e=>e.params.reply_markup.inline_keyboard.at(-1)[0].url),[
+    'https://t.me/odilovstudiobot?start=c_1',
+    'https://t.me/odilovstudiobot?start=c_2',
+    'https://t.me/odilovstudiobot?start=c_3'
+  ]);
+  assert.deepEqual(x.sqlite.prepare('SELECT button_status FROM channel_posts ORDER BY id').all().map(v=>v.button_status),
+    ['ready','ready','ready']);
+});
+
+test('Telegram edit failure is visible to admins and can be repaired by post number',async()=>{
+  const x=await setup();
+  const calls=[];
+  let fail=true;
+  const api=async(method,params)=>{
+    calls.push({method,params});
+    if(method==='editMessageReplyMarkup' && fail)throw Error("editMessageReplyMarkup: Bad Request: message can't be edited");
+    return {message_id:1};
+  };
+  await handleUpdate(x.env,channelPost('odilovstudio',42),api,x.store);
+  assert.equal(x.sqlite.prepare('SELECT button_status FROM channel_posts WHERE message_id=42').get().button_status,'failed');
+  await handleUpdate(x.env,msg(111,'/posts'),api,x.store);
+  assert.match(calls.at(-1).params.text,/message can&#39;t be edited/);
+  fail=false;
+  await handleUpdate(x.env,msg(111,'/fixpost 42'),api,x.store);
+  assert.equal(x.sqlite.prepare('SELECT button_status FROM channel_posts WHERE message_id=42').get().button_status,'ready');
+  assert.ok(calls.some(c=>c.method==='sendMessage'&&c.params.text.includes('izoh tugmasi qo')));
+});
+
+test('edited channel post reattempts failed comment markup but ignores already attached buttons',async()=>{
+  const x=await setup();
+  let blocked=true,edits=0;
+  const api=async(method)=>{
+    if(method==='editMessageReplyMarkup') {
+      edits++;
+      if(blocked)throw Error('editMessageReplyMarkup: Bad Request: message cannot be edited');
+    }
+    return {message_id:1};
+  };
+  await handleUpdate(x.env,channelPost('odilovstudio',50),api,x.store);
+  assert.equal(edits,1);
+  blocked=false;
+  await handleUpdate(x.env,{
+    update_id:8001,edited_channel_post:channelPost('odilovstudio',50).channel_post
+  },api,x.store);
+  assert.equal(edits,2);
+  assert.equal(x.sqlite.prepare('SELECT button_status FROM channel_posts WHERE message_id=50').get().button_status,'ready');
+  await handleUpdate(x.env,{
+    update_id:8002,edited_channel_post:channelPost('odilovstudio',50).channel_post
+  },api,x.store);
+  assert.equal(edits,2);
+});
