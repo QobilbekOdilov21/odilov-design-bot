@@ -1,0 +1,6 @@
+# Copy to .dev.vars ONLY for local testing; NEVER commit the real file.
+BOT_TOKEN=YOUR_BOTFATHER_TOKEN
+WEBHOOK_SECRET=RANDOM_SECRET_32_OR_MORE_CHARACTERS
+OWNER_ID=123456789
+PORTFOLIO_URL=https://t.me/your_channel
+MANAGER_USERNAME=your_username

@@ -1,0 +1,16 @@
+name: Cloudflare bot checks
+on:
+  push:
+    paths: ['cloudflare/**', '.github/workflows/cloudflare.yml']
+  pull_request:
+    paths: ['cloudflare/**', '.github/workflows/cloudflare.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check && npm test
+        working-directory: cloudflare
