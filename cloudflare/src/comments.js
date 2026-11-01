@@ -86,6 +86,40 @@ export async function handleChannelPost(ctx, msg, { force = false } = {}) {
   return {ok:false,postId:post.id,reason:lastError};
 }
 
+export async function checkChannelPermissions(ctx, adminId) {
+  if (!(await ctx.db.isAdmin(adminId,ctx.ownerId)))
+    return send(ctx.api,adminId,'⛔ Ruxsat yo‘q.');
+  const handle=channelHandle(ctx.env);
+  let chat, bot, member;
+  try {
+    chat=await ctx.api('getChat',{chat_id:'@'+handle});
+    bot=await ctx.api('getMe');
+    member=await ctx.api('getChatMember',{chat_id:chat.id,user_id:bot.id});
+  } catch (error) {
+    return send(ctx.api,adminId,
+      '⚠️ Kanal yoki bot ruxsatlarini Telegram orqali tekshirib bo‘lmadi.\n'+
+      esc(String(error?.message||'Telegram API xatosi').slice(0,240)));
+  }
+  const recent=await q(ctx,'SELECT chat_id,button_status,message_id FROM channel_posts ORDER BY id DESC LIMIT 1').first();
+  const match=recent ? String(recent.chat_id)===String(chat.id) : null;
+  const show=flag=>flag===true?'✅ Berilgan':'❌ Berilmagan';
+  const status=member?.status||'unknown';
+  return send(ctx.api,adminId,
+    '🔍 <b>Kanal tekshiruvi</b>\n\n'+
+    'Kanal: @'+esc(handle)+'\n'+
+    'Kanal ID: <code>'+esc(chat.id)+'</code>\n'+
+    'Bot: @'+esc(bot.username||'unknown')+'\n'+
+    'Bot holati: <b>'+esc(status)+'</b>\n'+
+    'Xabarlarni tahrirlash: '+show(status==='creator'||member?.can_edit_messages)+'\n'+
+    'Post joylash: '+show(status==='creator'||member?.can_post_messages)+'\n'+
+    'Qayd etilgan postlarning kanal IDsi: '+
+      (match===null?'hali ma’lumot yo‘q':match?'✅ Bir xil':'❌ Boshqa kanal')+'\n\n'+
+    (status!=='creator'&&!member?.can_edit_messages?
+      '➡️ Manage Channel → Administrators → @'+esc(bot.username||'bot')+
+      ' → Edit Messages huquqini yoqing.':
+      '➡️ Huquqlar mavjud. Post turini va tahrirlash cheklovlarini keyingi bosqichda tekshiring.'));
+}
+
 export async function listChannelPostStatus(ctx, adminId) {
   if (!(await ctx.db.isAdmin(adminId,ctx.ownerId))) return send(ctx.api,adminId,'⛔ Ruxsat yo‘q.');
   const rows=(await q(ctx,'SELECT * FROM channel_posts ORDER BY id DESC LIMIT 10').all()).results;
