@@ -36,27 +36,81 @@ function commentsKeyboard(post, page, total, canDelete, items) {
   return {inline_keyboard:kb};
 }
 
-export async function handleChannelPost(ctx, msg) {
-  if (msg.chat?.type !== 'channel' || !Number.isSafeInteger(msg.chat.id) ||
-      !Number.isSafeInteger(msg.message_id) || msg.message_id <= 0) return;
-  if (String(msg.chat.username || '').toLowerCase() !== channelHandle(ctx.env)) return;
+
+async function setPostStatus(ctx, postId, status, error = null) {
+  await q(ctx,'UPDATE channel_posts SET button_status=?,last_error=? WHERE id=?',status,error,postId).run();
+}
+function matchingChannel(env, chat) {
+  return chat?.type==='channel' && String(chat.username||'').toLowerCase()===channelHandle(env);
+}
+export async function handleChannelPost(ctx, msg, { force = false } = {}) {
+  if (!matchingChannel(ctx.env,msg.chat) || !Number.isSafeInteger(msg.chat.id) ||
+      !Number.isSafeInteger(msg.message_id) || msg.message_id <= 0) return {skipped:true};
   await q(ctx,`INSERT OR IGNORE INTO channel_posts(chat_id,message_id,channel_username)
     VALUES(?,?,?)`,msg.chat.id,msg.message_id,msg.chat.username).run();
-  const post = await q(ctx,'SELECT * FROM channel_posts WHERE chat_id=? AND message_id=?',
+  const post=await q(ctx,'SELECT * FROM channel_posts WHERE chat_id=? AND message_id=?',
     msg.chat.id,msg.message_id).first();
   if (!post) throw Error('Channel post could not be saved');
+  if (post.button_status==='ready' && !force) return {ok:true,alreadyAdded:true};
 
-  // Never erase unrelated buttons when a post already has an inline keyboard.
-  const existing = Array.isArray(msg.reply_markup?.inline_keyboard) ? msg.reply_markup.inline_keyboard : [];
-  const marker = `https://t.me/${botHandle(ctx.env)}?start=c_${post.id}`;
-  const rows = existing
-    .map(row => row.filter(button => button.url !== marker))
-    .filter(row => row.length).slice(0,7);
-  rows.push([{ text:'💬 Izoh qoldirish', url:marker }]);
-  // Requires the bot to be channel admin with permission to edit messages.
-  await ctx.api('editMessageReplyMarkup', {
-    chat_id:msg.chat.id,message_id:msg.message_id,reply_markup:{inline_keyboard:rows}
+  const existing=Array.isArray(msg.reply_markup?.inline_keyboard) ? msg.reply_markup.inline_keyboard : [];
+  const marker=`https://t.me/${botHandle(ctx.env)}?start=c_${post.id}`;
+  const rows=existing
+    .map(row=>row.filter(button=>button.url!==marker))
+    .filter(row=>row.length).slice(0,7);
+  rows.push([{text:'💬 Izoh qoldirish',url:marker}]);
+
+  let lastError=null;
+  for (const delay of [0,800,1800]) {
+    if (delay) await new Promise(resolve=>setTimeout(resolve,delay));
+    try {
+      await ctx.api('editMessageReplyMarkup',{
+        chat_id:msg.chat.id,message_id:msg.message_id,
+        reply_markup:{inline_keyboard:rows}
+      });
+      await setPostStatus(ctx,post.id,'ready');
+      return {ok:true,postId:post.id};
+    } catch(error) {
+      lastError=String(error?.message||error).slice(0,180);
+      if (/message is not modified/i.test(lastError)) {
+        await setPostStatus(ctx,post.id,'ready');
+        return {ok:true,alreadyAdded:true};
+      }
+      if (!/(Too Many Requests|retry after|HTTP 429|HTTP 5\d\d|message to edit not found)/i.test(lastError))
+        break;
+    }
+  }
+  await setPostStatus(ctx,post.id,'failed',lastError);
+  console.error('Channel comment button failed',msg.chat.id,msg.message_id,lastError);
+  // Do not retry a permanently uneditable post indefinitely. Admin can repair it via /fixpost.
+  return {ok:false,postId:post.id,reason:lastError};
+}
+
+export async function listChannelPostStatus(ctx, adminId) {
+  if (!(await ctx.db.isAdmin(adminId,ctx.ownerId))) return send(ctx.api,adminId,'⛔ Ruxsat yo‘q.');
+  const rows=(await q(ctx,'SELECT * FROM channel_posts ORDER BY id DESC LIMIT 10').all()).results;
+  const lines=rows.map(p=>{
+    const status=p.button_status==='ready'?'✅':p.button_status==='failed'?'❌':'⏳';
+    const link=postLink(p);
+    return `${status} Post #${p.message_id}${link ? ' · '+esc(link) : ''}`+
+      (p.button_status==='failed'? `\n⚠️ ${esc(p.last_error||'Telegram API xatosi')}` : '');
   });
+  return send(ctx.api,adminId,'📢 <b>Kanal izoh tugmalari</b>\n\n'+
+    (lines.join('\n\n')||'Hozircha kanal posti qayd etilmagan.')+
+    '\n\nTugma chiqmagan post ID sini /fixpost 123 orqali qayta ishlating.');
+}
+
+export async function repairPost(ctx,adminId,postMessageId) {
+  if (!(await ctx.db.isAdmin(adminId,ctx.ownerId))) return send(ctx.api,adminId,'⛔ Ruxsat yo‘q.');
+  if (!isPositiveId(postMessageId)) return send(ctx.api,adminId,'Masalan: /fixpost 123 — kanal postining ID si.');
+  const channel=await q(ctx,'SELECT chat_id,channel_username FROM channel_posts ORDER BY id DESC LIMIT 1').first();
+  if (!channel) return send(ctx.api,adminId,'Avval bot kanalga post admini qilib qo‘shilishi va kamida bitta yangi postni olishi kerak.');
+  const result=await handleChannelPost(ctx,{
+    chat:{type:'channel',id:channel.chat_id,username:channel.channel_username},
+    message_id:Number(postMessageId)
+  },{force:true});
+  if (result.ok) return send(ctx.api,adminId,`✅ Kanal posti #${postMessageId} uchun izoh tugmasi qo‘shildi.`);
+  return send(ctx.api,adminId,`❌ Post #${postMessageId}: ${esc(result.reason||'Tugma qo‘shilmadi')}.\n\nBotning Edit messages huquqini tekshiring.`);
 }
 
 export async function showPostComments(ctx, userId, postId, callback=null, page=0) {
