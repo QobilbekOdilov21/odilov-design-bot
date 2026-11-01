@@ -92,6 +92,16 @@ Holatini tekshirish: `npm run webhook:info`.
 6. `🛠 Xizmatlar / narxlar` menyusi orqali narx yoki xizmat holatini o‘zgartiring (bosh admin).
 
 
+## Kanalga kafolatliroq izoh tugmasi bilan post chiqarish: /publish
+
+Agar kanalga qo‘lda joylangan postlarda `message to edit not found` yoki `MESSAGE_ID_INVALID` xatoligi paydo bo‘lsa, Telegram API ushbu postning tugmasini tahrirlashga ruxsat bermagan. Kanal administratori huquqi mavjud bo‘lishiga qaramay bunday xatolar kelishi mumkin.
+
+**Ishonchliroq variant:** botdagi admin akkauntidan `/publish` yuboring, keyin **bitta matn, rasm, video, audio yoki hujjat** yuboring. Bot bu xabarni `copyMessage` orqali `@odilovstudio` kanalida yangidan e’lon qiladi va o‘zi chiqargan postga **💬 Izoh qoldirish** tugmasini biriktiradi. Kanalga oldindan qo‘lda joylangan postni o‘chirmaydi yoki almashtirmaydi. Botdagi `/cancel` orqali jo‘natishni bekor qilish mumkin.
+
+Har bir alohida kanal posti uchun qaytadan `/publish` yuboring. Bu bir martalik post chiqarish rejimi; har qanday matn yoki fayl avtomatik ravishda kanalga yuborilmaydi. Agar Telegram baribir tugmani qo‘shishni rad etsa, post o‘zi kanalda saqlanadi, bot esa adminni ogohlantiradi va `/posts` xato sababini ko‘rsatadi. `/fixpost N` post tugmasini qayta sinaydi. Bu funksiyani ishlatish uchun botga kanalning **Post Messages** va **Edit Messages** huquqlari kerak.
+
+**Muhim:** `/publish` orqali yuborilgan postlar bot tomonidan chiqariladi; avval qo‘lda yuborilgan kanal postlariga tugma avtomatik qo‘shilishi Telegram tomonidan kafolatlanmaydi.
+
 ## Kanal postlariga bot orqali izoh qoldirish
 
 Telegram’ning haqiqiy **Comment** tredi faqat kanalga muhokama guruhi ulanganda ishlaydi. Ushbu funksiya **guruh talab qilmaydigan muqobil izoh tizimi**: kanal postidagi **💬 Izoh qoldirish** tugmasi `@odilovstudiobot` ning shaxsiy chatini ochadi. Izohlar D1 da saqlanadi va post bo‘yicha bot ichida ko‘rsatiladi; izohlar kanal ichida alohida native Telegram thread bo‘lib ko‘rinmaydi.
