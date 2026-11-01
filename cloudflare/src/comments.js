@@ -86,6 +86,74 @@ export async function handleChannelPost(ctx, msg, { force = false } = {}) {
   return {ok:false,postId:post.id,reason:lastError};
 }
 
+/**
+ * Publish an admin's Telegram message as a fresh channel post.
+ * Unlike editing somebody else's channel post, the copy belongs to this bot.
+ * Any existing caption, media and Telegram entities are preserved by copyMessage.
+ */
+export async function startPublish(ctx, userId) {
+  if (!(await ctx.db.isAdmin(userId,ctx.ownerId)))
+    return send(ctx.api,userId,'⛔ Faqat admin kanalga post joylay oladi.');
+  await ctx.db.clearSession(userId);
+  await ctx.db.setSession(userId,'publish_post');
+  return send(ctx.api,userId,
+    '📢 <b>Kanalga post joylash</b>\n\n' +
+    'Endi matn, rasm, video yoki hujjatni shu chatga yuboring. ' +
+    'Bot uni @'+esc(channelHandle(ctx.env))+
+    ' kanaliga chiqaradi va izoh tugmasini qo‘shadi.\n\n/cancel — bekor qilish.');
+}
+
+export async function publishChannelMessage(ctx, msg) {
+  const user=msg?.from?.id;
+  if (!user || !(await ctx.db.isAdmin(user,ctx.ownerId))) {
+    if (user) await ctx.db.clearSession(user);
+    return;
+  }
+  if (!msg.message_id || !msg.chat?.id)
+    return send(ctx.api,user,'Xabarni qayta yuboring.');
+  if (!(String(msg.text||'').trim() || msg.photo?.length || msg.video ||
+        msg.document || msg.animation || msg.audio))
+    return send(ctx.api,user,'Faqat matn, rasm, video, audio yoki fayl yuboring. /cancel — bekor qilish.');
+
+  let copied;
+  let chat;
+  try {
+    chat=await ctx.api('getChat',{chat_id:'@'+channelHandle(ctx.env)});
+    if (chat?.type!=='channel' || !Number.isSafeInteger(chat?.id))
+      throw Error('Telegram kanalni aniqlay olmadi');
+    copied=await ctx.api('copyMessage',{
+      chat_id:chat.id,from_chat_id:msg.chat.id,message_id:msg.message_id
+    });
+    if (!Number.isSafeInteger(copied?.message_id))
+      throw Error('Kanal xabar IDsi qaytmadi');
+  } catch(error) {
+    console.error('Channel publish API failed',error?.name||'error');
+    return send(ctx.api,user,
+      '❌ Kanalga yuborilmadi. Botning Post Messages huquqini va kanal manzilini tekshiring.\n' +
+      esc(String(error?.message||'Telegram xatosi').slice(0,160)));
+  }
+
+  // The channel post has already been created. Never raise an error that makes
+  // Telegram retry this update and publish a duplicate.
+  await ctx.db.clearSession(user).catch(()=>{});
+  let attached=false;
+  try {
+    const status=await handleChannelPost(ctx,{
+      chat:{type:'channel',id:chat.id,username:chat.username||channelHandle(ctx.env)},
+      message_id:copied.message_id
+    });
+    attached=!!status?.ok;
+  } catch(error) {
+    console.error('Published post button failed',error?.name||'error');
+  }
+  const link=`https://t.me/${channelHandle(ctx.env)}/${copied.message_id}`;
+  const message=attached?
+    '✅ <b>Post kanalga chiqarildi, izoh tugmasi qo‘shildi.</b>':
+    '⚠️ <b>Post kanalga chiqarildi, lekin izoh tugmasini qo‘shish amalga oshmadi.</b>\n'+
+    'Botda /posts orqali sababni ko‘ring, /fixpost '+copied.message_id+' orqali qayta sinang.';
+  return send(ctx.api,user,message+'\n\n'+esc(link)).catch(()=>{});
+}
+
 export async function checkChannelPermissions(ctx, adminId) {
   if (!(await ctx.db.isAdmin(adminId,ctx.ownerId)))
     return send(ctx.api,adminId,'⛔ Ruxsat yo‘q.');
