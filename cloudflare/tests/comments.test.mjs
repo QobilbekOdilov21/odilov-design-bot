@@ -156,3 +156,45 @@ test('channel permission diagnosis shows actual Telegram edit rights and channel
   };
   await handleUpdate(x.env,msg(111,'/checkchannel'),api,x.store);
 });
+
+
+test('admin /publish posts copied media and attaches comment button to the new channel message',async()=>{
+  const x=await setup(), calls=[];
+  const api=async(method,params)=>{
+    calls.push({method,params});
+    if(method==='getChat')return {id:-1001256789012,type:'channel',username:'odilovstudio'};
+    if(method==='copyMessage')return {message_id:76};
+    return {message_id:calls.length};
+  };
+  await handleUpdate(x.env,msg(111,'/start'),api,x.store);
+  await handleUpdate(x.env,msg(111,'/publish'),api,x.store);
+  assert.equal((await x.store.session(111)).action,'publish_post');
+  const u=msg(111,undefined,{text:undefined,photo:[{file_id:'test_photo'}]});
+  await handleUpdate(x.env,u,api,x.store);
+  assert.ok(calls.some(c=>c.method==='copyMessage' && c.params.chat_id===-1001256789012));
+  const edit=calls.find(c=>c.method==='editMessageReplyMarkup');
+  assert.equal(edit.params.message_id,76);
+  assert.equal(edit.params.reply_markup.inline_keyboard[0][0].url,'https://t.me/odilovstudiobot?start=c_1');
+  assert.equal(x.sqlite.prepare('SELECT button_status FROM channel_posts WHERE message_id=76').get().button_status,'ready');
+  assert.equal(await x.store.session(111),null);
+  assert.ok(calls.some(c=>c.method==='sendMessage'&&c.params.text.includes('Post kanalga chiqarildi')));
+});
+
+test('non-admin cannot publish, and failed edit does not cause duplicate copied channel post',async()=>{
+  const x=await setup(),calls=[];
+  const api=async(method,params)=>{
+    calls.push({method,params});
+    if(method==='getChat')return {id:-1001256789012,type:'channel',username:'odilovstudio'};
+    if(method==='copyMessage')return {message_id:87};
+    if(method==='editMessageReplyMarkup')throw Error('Bad Request: message to edit not found');
+    return {message_id:1};
+  };
+  await handleUpdate(x.env,msg(222,'/publish'),api,x.store);
+  assert.equal(calls.filter(c=>c.method==='copyMessage').length,0);
+  await handleUpdate(x.env,msg(111,'/publish'),api,x.store);
+  await handleUpdate(x.env,msg(111,'Yangi post'),api,x.store);
+  assert.equal(calls.filter(c=>c.method==='copyMessage').length,1);
+  assert.equal(x.sqlite.prepare('SELECT button_status FROM channel_posts WHERE message_id=87').get().button_status,'failed');
+  assert.equal(await x.store.session(111),null);
+  assert.ok(calls.some(c=>c.method==='sendMessage'&&c.params.text.includes('izoh tugmasini')));
+});
