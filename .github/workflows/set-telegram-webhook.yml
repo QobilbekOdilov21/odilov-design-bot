@@ -2,6 +2,10 @@ name: "ODILOV — Set Telegram webhook"
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/set-telegram-webhook.yml'
 
 permissions:
   contents: read
