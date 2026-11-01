@@ -14,12 +14,12 @@
 
 1. [Workers & Pages](https://dash.cloudflare.com/) → **Create application** → **Import a repository** → **GitHub**.
 2. Repository: `QobilbekOdilov21/odilov-design-bot`, branch: `main`.
-3. **Worker name:** `odilov-studio-orders` — `wrangler.jsonc` dagi nom bilan bir xil bo‘lsin.
+3. **Worker name:** `odilov-design-bot` — `wrangler.jsonc` dagi nom bilan bir xil bo‘lsin.
 4. **Root directory:** `cloudflare` (bu loyiha monorepo ichida).
 5. **Build command:** `npm run check`.
 6. **Deploy command:** `npm run deploy:production`. Bu Worker'ni chiqaradi va D1 migratsiyasini avtomatik bajarishga urinadi. D1 ruxsati yetishmasa, alohida `npx wrangler d1 migrations apply DB --remote` orqali bajaring.
 7. **Save and Deploy**; Cloudflare avtomatik D1 DB yaratishi mumkin. Deploy logida Worker URL va D1 holatini tekshiring. `GET /` uchun 404 qaytishi normal.
-8. Worker → **Settings → Variables & Secrets** orqali quyidagi qiymatlarni runtime **Secret** sifatida kiriting:
+8. Worker → **Settings → Runtime variables and secrets** orqali qiymatlarni kiriting. `BOT_TOKEN` va `WEBHOOK_SECRET` Secret, qolganlari oddiy Variable bo‘lishi mumkin. GitHub build variables bilan adashtirmang:
    - `BOT_TOKEN` — BotFather tokeni
    - `WEBHOOK_SECRET` — 32+ belgili tasodifiy sir (harf, raqam, `_` yoki `-`)
    - `OWNER_ID` — bosh admin Telegram numeric ID
@@ -42,14 +42,14 @@
 
 ## 2. Worker va D1 yaratish
 
-`wrangler.jsonc` da D1 `database_id` ko‘rsatilmagan: zamonaviy Wrangler deploy vaqtida avtomatik provision qiladi. Bu Cloudflare Free rejasi bilan ham ishlaydi. **Hali webhook o‘rnatilmang** — avval baza migratsiyasini bajaring.
+`wrangler.jsonc` da D1 `database_id` allaqachon biriktirilgan. Bazani qayta yaratmang. **Hali webhook o‘rnatilmang** — avval baza migratsiyasini bajaring.
 
 ```bash
 npx wrangler deploy
 npx wrangler d1 migrations apply DB --remote
 ```
 
-Deploy'dan keyin berilgan `https://odilov-studio-orders.<YOUR_SUBDOMAIN>.workers.dev` URL ni nusxalab oling. D1 resurs yaratishda xatolik bo‘lsa, `npx wrangler d1 create odilov-studio-db` bajarib `database_id` ni `wrangler.jsonc` ichiga kiriting va qayta deploy qiling.
+Deploy'dan keyin berilgan `https://odilov-design-bot.qobilbekodilov21.workers.dev` URL ni nusxalab oling. D1 ulanishida xatolik bo‘lsa, Cloudflare Dashboard’dagi mavjud `odilov-studio-db` ID va DB bindingni tekshiring.
 
 **Eslatma:** Worker URL `GET /` so‘rovlari uchun ataylab `404` qaytaradi — bu veb-sayt emas. Telegram faqat `POST /webhook` yuboradi.
 
@@ -91,6 +91,22 @@ Holatini tekshirish: `npm run webhook:info`.
 5. `👥 Adminlar` -> `➕ Admin qo‘shish`. Yangi admin avval botga `/start` bosgan va numeric ID sizda bo‘lishi kerak. Shu menyudan adminni o‘chirish ham mumkin.
 6. `🛠 Xizmatlar / narxlar` menyusi orqali narx yoki xizmat holatini o‘zgartiring (bosh admin).
 
+
+## Kanal postlariga bot orqali izoh qoldirish
+
+Telegram’ning haqiqiy **Comment** tredi faqat kanalga muhokama guruhi ulanganda ishlaydi. Ushbu funksiya **guruh talab qilmaydigan muqobil izoh tizimi**: kanal postidagi **💬 Izoh qoldirish** tugmasi `@odilovstudiobot` ning shaxsiy chatini ochadi. Izohlar D1 da saqlanadi va post bo‘yicha bot ichida ko‘rsatiladi; izohlar kanal ichida alohida native Telegram thread bo‘lib ko‘rinmaydi.
+
+1. `@odilovstudiobot` ni `@odilovstudio` kanaliga **administrator** qilib qo‘shing; **Edit messages / Xabarlarni tahrirlash** ruxsatini bering.
+2. [GitHub webhook workflow](https://github.com/QobilbekOdilov21/odilov-design-bot/actions/workflows/set-telegram-webhook.yml) sahifasida **Run workflow → main → Run workflow** ni yana bajaring. Endi `allowed_updates` ichida `channel_post` ham bor. GitHub Actions’dagi `BOT_TOKEN` va `WEBHOOK_SECRET` mos bo‘lishi kerak.
+3. Cloudflare deployning eng so‘nggi commitini olganini va `0002_post_comments.sql` migratsiyasi bajarilganini tekshiring.
+4. Kanalga **yangi** test postini qo‘ying. Bot yangi postga inline **💬 Izoh qoldirish** tugmasini qo‘shadi. Oldin e’lon qilingan postlarga tugma avtomatik qo‘shilmaydi.
+5. Boshqa Telegram akkaunti bilan tugmani ochib, izoh yozing. Izohlar post bo‘yicha botda ko‘rinadi; admin botdagi izohlar ekranidan **🗑 Izohni o‘chirish** tugmasini ko‘radi.
+6. Har bir foydalanuvchi har bir postga ko‘pi bilan 5 ta izoh, 30 soniyadan kam bo‘lmagan oraliqda yozishi mumkin; izoh 2–600 belgi.
+
+`CHANNEL_USERNAME` (ixtiyoriy runtime Variable) orqali kuzatiladigan kanalni tanlash mumkin (masalan, `odilovstudio`). Agar belgilanmagan bo‘lsa, bot `PORTFOLIO_URL` dan kanal username’ni oladi, u ham bo‘lmasa `odilovstudio` ishlatiladi. `BOT_USERNAME` (ixtiyoriy runtime Variable) bot username o‘zgarganda kerak; hozirda standart qiymat `odilovstudiobot`.
+
+**Eslatma:** `wrangler.jsonc` da `keep_vars: true` bor; bu Cloudflare Dashboard’dagi runtime Variable’larni keyingi GitHub deploylarda saqlaydi. Secret qiymatlarini GitHub kodiga qo‘ymang.
+
 ## Buyruqlar
 
 `/start` `/order` `/myorders` `/prices` `/portfolio` `/help` `/privacy` `/delete_my_data` `/cancel` `/admin` `/stats`.
@@ -118,4 +134,4 @@ Testlar D1 ning SQL sintaksisiga yaqin Node.js ichki SQLite bazasi bilan ishlayd
 
 ## Tuzilma
 
-`src/index.js` webhook · `src/bot.js` mijoz/admin flow · `src/db.js` D1 data access · `src/ui.js` tugmalar · `migrations/0001_init.sql` schema · `tests/` testlar · `scripts/set-webhook.mjs` webhook setup.
+`src/index.js` webhook · `src/bot.js` mijoz/admin flow · `src/db.js` D1 data access · `src/ui.js` tugmalar · `migrations/0001_init.sql` va `0002_post_comments.sql` schema · `tests/` testlar · `scripts/set-webhook.mjs` webhook setup.
