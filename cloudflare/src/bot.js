@@ -2,6 +2,7 @@ import { Store } from './db.js';
 import { esc, clean, MAX_ASSETS, STATUS, isPositiveId } from './constants.js';
 import { telegram, send, editOrSend, notifyUser } from './telegram.js';
 import * as ui from './ui.js';
+import { handleChannelPost, showPostComments, handleCommentCallback, handleCommentText } from './comments.js';
 
 const ownerId = env => Number(env.OWNER_ID);
 const userName = u => [u?.first_name,u?.last_name].filter(Boolean).join(' ').slice(0,130) || 'Mijoz';
@@ -215,6 +216,7 @@ async function handleAdminAction(ctx,action,q) {
 async function handleCallback(ctx,q) {
   const id=q.from.id; const data=q.data||'';
   if(data.length>64)return;
+  if(data.startsWith('c:')) return handleCommentCallback(ctx,data,q);
   if(data.startsWith('adm:')) return handleAdminAction(ctx,data.slice(4),q);
   if(data==='nav:home') return mainMenu(ctx,id,q);
   if(data==='nav:new')return startOrder(ctx,id,q);
@@ -324,7 +326,12 @@ async function handleMessage(ctx,msg) {
   const id=msg.from.id;
   const text=String(msg.text||'').trim();
   const cmd=text.split(/\s+/)[0]?.toLowerCase()?.split('@')[0];
-  if(cmd==='/start') {await ctx.db.clearSession(id);return mainMenu(ctx,id);}
+  if(cmd==='/start') {
+    await ctx.db.clearSession(id);
+    const payload=text.split(/\s+/)[1]||'';
+    if(/^c_[1-9]\d{0,14}$/.test(payload))return showPostComments(ctx,id,Number(payload.slice(2)));
+    return mainMenu(ctx,id);
+  }
   if(cmd==='/cancel') {await ctx.db.clearSession(id);await ctx.db.clearDraft(id);return send(ctx.api,id,'❌ Amal bekor qilindi.',await userMenu(ctx,id));}
   if(cmd==='/order')return startOrder(ctx,id);
   if(cmd==='/myorders')return showCustomerOrders(ctx,id);
@@ -339,6 +346,7 @@ async function handleMessage(ctx,msg) {
   if(cmd==='/delete_my_data')return send(ctx.api,id,'Barcha buyurtmalaringiz va ma’lumotlaringiz bazadan o‘chirilsinmi? Admin chatlariga yuborilgan eski xabarlar saqlanib qolishi mumkin.',ui.deleteConfirm());
   if(cmd?.startsWith('/'))return send(ctx.api,id,'Noma’lum buyruq. /help');
   const session=await ctx.db.session(id);
+  if(session?.action==='post_comment') return handleCommentText(ctx,msg,session);
   if(session)return handleSession(ctx,msg,session);
   const draft=await ctx.db.draft(id);
   if(draft)return handleDraftMessage(ctx,msg,draft);
@@ -350,6 +358,7 @@ export async function handleUpdate(env, update, apiOverride = null, dbOverride =
   const api = apiOverride || telegram(env);
   const ctx={db,api,env,ownerId:ownerId(env)};
   if(!isPositiveId(env.OWNER_ID))throw Error('OWNER_ID not set or invalid');
+  if(update.channel_post)return handleChannelPost(ctx,update.channel_post);
   const from=update.message?.from||update.callback_query?.from;
   if(!from?.id)return;
   // register users on every interaction, even if they changed display name
