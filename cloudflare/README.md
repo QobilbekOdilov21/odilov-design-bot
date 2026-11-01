@@ -10,6 +10,26 @@
 
 **Muhim:** Botga kiritilgan telefon/brief va buyurtma ma’lumotlari D1 da saqlanadi; admin chatlariga yetkazilgan xabarlar Telegram’da alohida qoladi. Faqat bitta Telegram webhook tokenini ishlating. Bepul limit oshishi holatlarida xabarlar kechikishi mumkin; Telegram retry qiladi.
 
+## Cloudflare Dashboard orqali GitHub'dan deploy (terminal talab qilinmaydi)
+
+1. [Workers & Pages](https://dash.cloudflare.com/) → **Create application** → **Import a repository** → **GitHub**.
+2. Repository: `QobilbekOdilov21/odilov-design-bot`, branch: `main`.
+3. **Worker name:** `odilov-studio-orders` — `wrangler.jsonc` dagi nom bilan bir xil bo‘lsin.
+4. **Root directory:** `cloudflare` (bu loyiha monorepo ichida).
+5. **Build command:** `npm run check`.
+6. **Deploy command:** `npm run deploy:production`. Bu Worker'ni chiqaradi va D1 migratsiyasini avtomatik bajarishga urinadi. D1 ruxsati yetishmasa, alohida `npx wrangler d1 migrations apply DB --remote` orqali bajaring.
+7. **Save and Deploy**; Cloudflare avtomatik D1 DB yaratishi mumkin. Deploy logida Worker URL va D1 holatini tekshiring. `GET /` uchun 404 qaytishi normal.
+8. Worker → **Settings → Variables & Secrets** orqali quyidagi qiymatlarni runtime **Secret** sifatida kiriting:
+   - `BOT_TOKEN` — BotFather tokeni
+   - `WEBHOOK_SECRET` — 32+ belgili tasodifiy sir (harf, raqam, `_` yoki `-`)
+   - `OWNER_ID` — bosh admin Telegram numeric ID
+   - `PORTFOLIO_URL` — kanalga haqiqiy `https://t.me/...` link
+   - `MANAGER_USERNAME` — `@` siz Telegram username
+9. Telegram webhook'ni o‘rnating: loyihaning `scripts/set-webhook.mjs` skriptini lokal terminalda `npm run webhook:set` orqali ishga tushirish mumkin. Unda token va secret interaktiv kiritiladi, kodga yozilmaydi.
+10. Adminning akkauntidan botga `/start`, `/admin` yuboring. Alohida mijoz akkauntida sinov buyurtmasi berib statusni boshqaring.
+
+**Muhim:** Cloudflare Git integration avtomatik deploy qiladi, lekin Telegram webhook birinchi marta alohida ulanishi shart. Token/secret'larni GitHub'ga, chatga yoki ochiq screenshotga joylamang. Bepul Workers/D1 limitlari qo‘llanadi. 
+
 ## 1. Bepul Cloudflare hisob
 
 1. https://dash.cloudflare.com/sign-up — hisob oching.
