@@ -1,0 +1,72 @@
+name: "ODILOV — Diagnose Telegram bot"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+      WEBHOOK_URL: https://odilov-design-bot.qobilbekodilov21.workers.dev/webhook
+    steps:
+      - name: Check Telegram webhook and Cloudflare secret without exposing credentials
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const { BOT_TOKEN, WEBHOOK_SECRET, WEBHOOK_URL } = process.env;
+          if (!/^\d+:[\w-]{25,}$/.test(BOT_TOKEN || '')) {
+            throw new Error('BOT_TOKEN is missing or invalid in GitHub Actions Secrets.');
+          }
+          if (!/^[A-Za-z0-9_-]{32,256}$/.test(WEBHOOK_SECRET || '')) {
+            throw new Error('WEBHOOK_SECRET is missing or has invalid format in GitHub Actions Secrets.');
+          }
+          const tg = async name => {
+            const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + name, {
+              signal: AbortSignal.timeout(15000)
+            });
+            const j = await r.json();
+            if (!r.ok || !j.ok) throw Error('Telegram ' + name + ' returned HTTP ' + r.status);
+            return j.result;
+          };
+          const bot = await tg('getMe');
+          console.log('Telegram token: valid (bot username: @' + bot.username + ')');
+          const info = await tg('getWebhookInfo');
+          console.log('Registered webhook URL matches deployed Worker:', info.url === WEBHOOK_URL);
+          console.log('Pending Telegram updates:', info.pending_update_count);
+          console.log('Telegram last error date:', info.last_error_date
+            ? new Date(info.last_error_date * 1000).toISOString() : 'none');
+          if (info.last_error_message) {
+            // GitHub masks stored secrets automatically; do not print API credentials.
+            console.log('Telegram last delivery error:', info.last_error_message.slice(0, 500));
+          } else console.log('Telegram last delivery error: none');
+
+          // Malformed JSON never enters bot logic or touches D1. Worker returns 400
+          // only if the secret header matches its own WEBHOOK_SECRET.
+          const r = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Telegram-Bot-Api-Secret-Token': WEBHOOK_SECRET
+            },
+            body: '{',
+            signal: AbortSignal.timeout(15000)
+          });
+          console.log('Cloudflare webhook secret probe status:', r.status);
+          if (r.status === 400) {
+            console.log('PASS: GitHub webhook secret matches Cloudflare Worker.');
+            console.log('NEXT: If Telegram is silent, verify Cloudflare BOT_TOKEN and OWNER_ID and check Worker logs.');
+          } else if (r.status === 403) {
+            console.log('FAIL: Cloudflare WEBHOOK_SECRET is missing or different from GitHub.');
+            process.exitCode = 1;
+          } else {
+            console.log('FAIL: Unexpected Worker status. Check Cloudflare worker deployment, route, and logs.');
+            process.exitCode = 1;
+          }
+          NODE
