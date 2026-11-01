@@ -5,6 +5,7 @@ import { Store } from '../src/db.js';
 export function dbFixture(){
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0002_post_comments.sql', import.meta.url), 'utf8'));
   const db = {
     prepare(sql) { return { bind(...args) { const st=sqlite.prepare(sql);
       return { first: async()=>st.get(...args)||null, all:async()=>({results:st.all(...args)}),
