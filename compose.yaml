@@ -1,0 +1,12 @@
+services:
+  odilov-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/odilov.db
+    volumes:
+      - odilov_data:/data
+
+volumes:
+  odilov_data:
