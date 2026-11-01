@@ -2,7 +2,7 @@ import { Store } from './db.js';
 import { esc, clean, MAX_ASSETS, STATUS, isPositiveId } from './constants.js';
 import { telegram, send, editOrSend, notifyUser } from './telegram.js';
 import * as ui from './ui.js';
-import { handleChannelPost, showPostComments, handleCommentCallback, handleCommentText, listChannelPostStatus, repairPost } from './comments.js';
+import { handleChannelPost, showPostComments, handleCommentCallback, handleCommentText, listChannelPostStatus, repairPost, checkChannelPermissions } from './comments.js';
 
 const ownerId = env => Number(env.OWNER_ID);
 const userName = u => [u?.first_name,u?.last_name].filter(Boolean).join(' ').slice(0,130) || 'Mijoz';
@@ -337,6 +337,7 @@ async function handleMessage(ctx,msg) {
   if(cmd==='/myorders')return showCustomerOrders(ctx,id);
   if(cmd==='/admin')return showAdmin(ctx,id);
   if(cmd==='/posts')return listChannelPostStatus(ctx,id);
+  if(cmd==='/checkchannel')return checkChannelPermissions(ctx,id);
   if(cmd==='/fixpost')return repairPost(ctx,id,text.split(/\s+/)[1]||'');
   if(cmd==='/stats'&&await ctx.db.isAdmin(id,ctx.ownerId)) {
     const rows=await ctx.db.stats();return send(ctx.api,id,'📊 '+rows.map(r=>`${STATUS[r.status]}: ${r.count}`).join('\n'),ui.adminHome());
