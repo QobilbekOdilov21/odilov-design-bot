@@ -2,7 +2,7 @@ import { Store } from './db.js';
 import { esc, clean, MAX_ASSETS, STATUS, isPositiveId } from './constants.js';
 import { telegram, send, editOrSend, notifyUser } from './telegram.js';
 import * as ui from './ui.js';
-import { handleChannelPost, showPostComments, handleCommentCallback, handleCommentText, listChannelPostStatus, repairPost, checkChannelPermissions, startPublish, publishChannelMessage } from './comments.js';
+import { checkChannelPermissions, startPublish, publishChannelMessage } from './channel.js';
 
 const ownerId = env => Number(env.OWNER_ID);
 const userName = u => [u?.first_name,u?.last_name].filter(Boolean).join(' ').slice(0,130) || 'Mijoz';
@@ -216,7 +216,6 @@ async function handleAdminAction(ctx,action,q) {
 async function handleCallback(ctx,q) {
   const id=q.from.id; const data=q.data||'';
   if(data.length>64)return;
-  if(data.startsWith('c:')) return handleCommentCallback(ctx,data,q);
   if(data.startsWith('adm:')) return handleAdminAction(ctx,data.slice(4),q);
   if(data==='nav:home') return mainMenu(ctx,id,q);
   if(data==='nav:new')return startOrder(ctx,id,q);
@@ -328,18 +327,14 @@ async function handleMessage(ctx,msg) {
   const cmd=text.split(/\s+/)[0]?.toLowerCase()?.split('@')[0];
   if(cmd==='/start') {
     await ctx.db.clearSession(id);
-    const payload=text.split(/\s+/)[1]||'';
-    if(/^c_[1-9]\d{0,14}$/.test(payload))return showPostComments(ctx,id,Number(payload.slice(2)));
     return mainMenu(ctx,id);
   }
   if(cmd==='/cancel') {await ctx.db.clearSession(id);await ctx.db.clearDraft(id);return send(ctx.api,id,'❌ Amal bekor qilindi.',await userMenu(ctx,id));}
   if(cmd==='/order')return startOrder(ctx,id);
   if(cmd==='/myorders')return showCustomerOrders(ctx,id);
   if(cmd==='/admin')return showAdmin(ctx,id);
-  if(cmd==='/posts')return listChannelPostStatus(ctx,id);
   if(cmd==='/checkchannel')return checkChannelPermissions(ctx,id);
   if(cmd==='/publish')return startPublish(ctx,id);
-  if(cmd==='/fixpost')return repairPost(ctx,id,text.split(/\s+/)[1]||'');
   if(cmd==='/stats'&&await ctx.db.isAdmin(id,ctx.ownerId)) {
     const rows=await ctx.db.stats();return send(ctx.api,id,'📊 '+rows.map(r=>`${STATUS[r.status]}: ${r.count}`).join('\n'),ui.adminHome());
   }
@@ -350,7 +345,7 @@ async function handleMessage(ctx,msg) {
   if(cmd==='/delete_my_data')return send(ctx.api,id,'Barcha buyurtmalaringiz va ma’lumotlaringiz bazadan o‘chirilsinmi? Admin chatlariga yuborilgan eski xabarlar saqlanib qolishi mumkin.',ui.deleteConfirm());
   if(cmd?.startsWith('/'))return send(ctx.api,id,'Noma’lum buyruq. /help');
   const session=await ctx.db.session(id);
-  if(session?.action==='post_comment') return handleCommentText(ctx,msg,session);
+  if(session?.action==='post_comment') {await ctx.db.clearSession(id);return mainMenu(ctx,id);}
   if(session?.action==='publish_post') return publishChannelMessage(ctx,msg);
   if(session)return handleSession(ctx,msg,session);
   const draft=await ctx.db.draft(id);
@@ -363,8 +358,6 @@ export async function handleUpdate(env, update, apiOverride = null, dbOverride =
   const api = apiOverride || telegram(env);
   const ctx={db,api,env,ownerId:ownerId(env)};
   if(!isPositiveId(env.OWNER_ID))throw Error('OWNER_ID not set or invalid');
-  if(update.channel_post)return handleChannelPost(ctx,update.channel_post);
-  if(update.edited_channel_post)return handleChannelPost(ctx,update.edited_channel_post);
   const from=update.message?.from||update.callback_query?.from;
   if(!from?.id)return;
   // register users on every interaction, even if they changed display name
